@@ -1,0 +1,127 @@
+import numpy as np
+import pandas as pd
+import math
+import itertools
+
+#defining matrices
+rec_convolution_matrix_dict = {}
+rec_convolution_no_itself_matrix_dict = {}
+rec_convolution_matrix_final=np.zeros((5000,151))
+poisson_matrix=np.zeros((5000,151))
+poisson_demand=np.zeros((5000,1))
+rec_convolution_matrix=((5000,151))
+multiplier_matrix=((5000,151))
+prob_IL_matrix=((5000,1))
+rows = len(poisson_matrix)
+cols = len(poisson_matrix[0])
+multiplier_matrix = [[0 for _ in range(cols)] for _ in range(rows)]
+prob_IL_matrix = [[0 for _ in range(cols)] for _ in range(rows)]
+poisson_demand = [[0 for _ in range(cols)] for _ in range(rows)]
+#rec_convolution_matrix=np.zeros((1000,21)) #rows = 1000, columns = 21
+
+#given data
+list_items = [2,14]
+prob_items = [0.75, 0.25]
+arrival_intensity = 0.0100392757927004
+lead_time = 382
+Q=5
+R=37
+
+pairwise_combinations = list(itertools.combinations(list_items, 2))
+
+#calculation for recursive convolution without number itself
+for l in range(0, len(pairwise_combinations)):
+    O1 = pairwise_combinations[l][0]
+    O2 = pairwise_combinations[l][1]
+    prob_O1 = prob_items[list_items.index(pairwise_combinations[l][0])]
+    prob_O2 = prob_items[list_items.index(pairwise_combinations[l][1])]
+    matrix_name = f"rec_con P0{O1} & P0{O2}"
+    matrix = np.zeros((5000, 151))
+    rec_convolution_matrix_dict[matrix_name] = matrix
+
+    for k in range(0,150):
+        for i in range(0,k+1):
+            rec_convolution_matrix_dict[matrix_name][O1*i+O2*(k-i)][k]= math.factorial(k) / (math.factorial(k-i)*math.factorial(i)) * math.pow(prob_O1, i) * math.pow(prob_O2, k - i)
+            i=i+1
+        k=k+1
+    #eliminating the repetitve cases of number itself.
+    for k in range(0,150):
+        rec_convolution_matrix_dict[matrix_name][O1*k][k]=0
+        rec_convolution_matrix_dict[matrix_name][O2*k][k]=0
+        k=k+1
+    rec_convolution_matrix_final=rec_convolution_matrix_final+rec_convolution_matrix_dict[matrix_name]
+    l=l+1
+
+#calculation for recursive convolution with number itself
+for l in range(0, len(list_items)):
+    O1=list_items[l]
+    O2=0
+    prob_O1 = prob_items[l]
+    prob_O2 = 0
+    matrix_name=f"rec_con num_itself P0{O1}"
+    matrix = np.zeros((5000, 151))
+    rec_convolution_no_itself_matrix_dict[matrix_name]=matrix
+    for k in range(0,150):
+        for i in range(0,k+1):
+            rec_convolution_no_itself_matrix_dict[matrix_name][O1*k][k]= math.factorial(k) / (math.factorial(k-i)*math.factorial(i)) * math.pow(prob_O1, i) * math.pow(prob_O2, k - i)
+            i=i+1
+        k=k+1
+    # Summation of each element of individual rec_con matrix to get final rec_con_matrix.
+    rec_convolution_matrix_final = rec_convolution_matrix_final + rec_convolution_no_itself_matrix_dict[matrix_name]
+    l=l+1
+#adjustment for f(j=0, k=0) = 1
+rec_convolution_matrix_final[0][0] = 1
+rec_convolution_matrix = rec_convolution_matrix_final
+
+#defining poisson function
+def poisson_function(k):
+    a = math.pow(arrival_intensity * lead_time, k) / (math.factorial(k) * math.exp(arrival_intensity * lead_time))
+    return(a)
+
+#loop to compute the poisson matrix
+for j in range(0,5000):
+    for k in range(0,151):
+        poisson_matrix[j][k]=poisson_function(k)
+        k = k+1
+    j = j+1
+
+#multipying elements of poisson matrix and rec convolution matrix
+for r in range(0,5000):
+    for c in range(0,151):
+        multiplier_matrix[r][c]=(poisson_matrix[r][c])*(rec_convolution_matrix[r][c])
+        c=c+1
+    r=r+1
+
+for r in range(0,5000):
+    for c in range(0,151):
+        poisson_demand[r][0]=poisson_demand[r][0]+multiplier_matrix[r][c]
+        c=c+1
+    r=r+1
+
+#Poisson P(IL=J)
+for j in range(0,5000):
+    k=max(R+1,j)
+    for i in range(k,R+Q+1):
+        prob_IL_matrix[j][0]=prob_IL_matrix[j][0]+poisson_demand[i-j][0]
+        i=i+1
+    j=j+1
+for i in range(0,5000):
+    prob_IL_matrix[i][0]=(prob_IL_matrix[i][0])*(1/Q)
+    i=i+1
+
+#S2 calculation
+numerator = 0
+denominator = 0
+
+for j in range(0,R+Q+1):
+    for k in range(0, len(list_items)):
+        numerator= numerator + prob_IL_matrix[j][0] * min(j, list_items[k]) * prob_items[k]
+        k=k+1
+    j=j+1
+
+for i in range(0, len(list_items)):
+    denominator=denominator+list_items[i]*prob_items[i]
+    i=i+1
+
+print(f" Fill Rate = {numerator/denominator*100}%")
+
